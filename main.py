@@ -57,6 +57,13 @@ def auditor(state:State):
         "status":"APPROVED_BY_AI"
     }
 
+def classifier(state:State):
+    if state["iteration_count"] >=3:
+        state["status"] = "ESCALATED_TO_HUMAN"
+        return END
+    elif state["iteration_count"] < 3 and state["feedback_history"][-1].is_compliant == False:
+        return "writer"
+
 graph_builder = StateGraph(State)
 graph_builder.add_node("extractor",extractor)
 graph_builder.add_node("retriever",retriever)
@@ -67,7 +74,7 @@ graph_builder.add_edge(START,"extractor")
 graph_builder.add_edge("extractor","retriever")
 graph_builder.add_edge("retriever","writer")
 graph_builder.add_edge("writer","auditor")
-graph_builder.add_edge("auditor",END)
+graph_builder.add_conditional_edges("auditor",classifier)
 
 graph = graph_builder.compile()
 
