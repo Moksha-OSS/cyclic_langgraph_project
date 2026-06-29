@@ -1,13 +1,33 @@
 from typing import TypedDict, List,Literal,Annotated
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 from langgraph.graph.message import add_messages
 from langgraph.graph import StateGraph, START, END
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import SystemMessage, HumanMessage
 
 class AuditorFeedback(BaseModel):
-    is_compliant: bool
-    missing_specs: List[str]
-    hallucinations_detected: List[str]
-    revision_instructions: str
+    is_compliant: Literal[True,False] = Field(
+        description="is the product compilant with what the customer asked answer in 'True' or 'False'"
+    )
+    missing_specs: List[str] = Field(
+        description="make a list of all the missing specs that our prodcut does have that are required in by the user"
+    )
+    hallucinations_detected: List[str] = Field(
+        description="make a list of all the hallucinations that the current draft holds comparing the users requirements and the spec sheet for our product"
+    )
+    revision_instructions: str = Field(
+        description="Any revisions instructions that you would like to give to the drafter so that it can make better draft"
+    )
+
+class ExtractedGoal(BaseModel):
+    goal:str = Field(
+        description="What are main things that the user want for example 'The product needs to withstand 180C heat and needs 10%tint'"
+    )
+
+class Draft(BaseModel):
+    drafted_response:str = Field(
+        description="According to the data given to you i.e the user's requirements and what our product has draft a response for the user stating how the product we have satisfies and meets their product requirements"
+    )
 
 class State(TypedDict):
     # Inputs
@@ -26,13 +46,18 @@ class State(TypedDict):
     
     # Final Output
     final_compliance_statement: str
-    status: Literal["APPROVED_BY_AI","ESCALATED_TO_HUMAN"] # "APPROVED_BY_AI" or "ESCALATED_TO_HUMAN"
+    status: Literal["APPROVED_BY_AI","ESCALATED_TO_HUMAN"]
 
+llm = ChatGoogleGenerativeAI(model = "google-3.1-flash-lite",temperature=0)
 def extractor(state:State):
     print("Extracting key variables...")
     print("Key variables extracted!\n\n")
+    llm_with_structured_output = llm.with_structured_output(ExtractedGoal)
+    system_message = SystemMessage(content="""""")
+    message_for_ai = [SystemMessage,HumanMessage(content=state['requirements_text'])]
+    response = llm_with_structured_output.invoke(message_for_ai)
     return{
-        "the_goal":"Needs 180C heat resistance and needs 10% tint"
+        "the_goal":response.goal
     }
 
 def retriever(state:State):
@@ -45,13 +70,31 @@ def retriever(state:State):
 def writer(state:State):
     print("Drafting a response...")
     print("Response Drafted!\n\n")
+    llm_with_structured_output = llm.with_structured_output(Draft)
+    system_message = SystemMessage(content="""""")
+    human_message = HumanMessage(content=f"""
+Here are the requirements that user wants
+
+{state['requirements_text']}
+
+and here are the products that we have in our inventory and that are closes to satisfying user needs
+
+{state['retrieved_datasheet_specs']}
+""")
+    message_for_llm = [system_message,human_message]
+    response = llm_with_structured_output.invoke(message_for_llm)
     return {
-        "current_draft":"Dear Consultant, our Window-Model-X exceeds your heat requirement of 180°C because it is rated for 200°C. It also meets your shading needs with a 12% tint."
+        "current_draft":response.drafted_responose
     }
 
 def auditor(state:State):
     print("Checking and comparing datasheet...")
     print("All looks good!\n\n")
+    llm_with_structured_output = llm.with_structured_output(AuditorFeedback)
+    system_message = SystemMessage(content="""""")
+    human_message = HumanMessage(content="""
+Here 
+""")
     return{
         "final_compliance_statement":state["current_draft"],
         "status":"APPROVED_BY_AI"
