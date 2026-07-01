@@ -92,9 +92,13 @@ def auditor(state:State):
     print("All looks good!\n\n")
     llm_with_structured_output = llm.with_structured_output(AuditorFeedback)
     system_message = SystemMessage(content="""""")
-    human_message = HumanMessage(content="""
-Here 
-""")
+    human_message = HumanMessage(content=f"""{state['requirements_text']}\n{state['retrieved_datasheet_specs']}\n{state['current_draft']}""")
+    response = llm_with_structured_output.invoke([system_message,human_message])
+    if not response.is_compliant:
+        state["iteration_count"]+=1
+        return{
+            "feedback_history":[response]
+        }
     return{
         "final_compliance_statement":state["current_draft"],
         "status":"APPROVED_BY_AI"
